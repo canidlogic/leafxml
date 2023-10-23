@@ -769,56 +769,42 @@ sub _entEsc {
   return $result;
 }
 
-# _procTag(token, lnum)
+# _parseAttr(str, lnum)
 # ---------------------
 #
-# Process a tag assembly.
+# Parse the attribute substring of a tag token.  Returns a hash
+# reference mapping attribute names to attribute values.  Names have
+# been validated and normalized.  Attribute values have been escaped and
+# normalized.
 #
-# token is the whole tag token.  lnum is the line number that the tag
-# token began.  It is assumed that line break normalization has already
-# been performed on the token.
+# The attribute substring, if it is not empty, should begin with at
+# least one codepoint of whitespace which separates it from the the
+# element name that precedes it in the tag.
 #
-sub _procTag {
+sub _parseAttr {
   # Get self and parameters
   ($#_ == 2) or die "Bad call";
   my $self = shift;
   (ref($self) and $self->isa(__PACKAGE__)) or die "Bad self";
   
-  my $token = shift;
-  (not ref($token)) or die "Bad call";
+  my $pstr = shift;
+  (not ref($pstr)) or die "Bad call";
   
   my $lnum = shift;
   _isInteger($lnum) or die "Bad call";
-  
-  # Save the tag line number
-  my $tag_lnum = $lnum;
-  
-  # Parse the tag before any attributes
-  ($token =~ /^\x{3c}(\x{2f})?([^ \t\n\x{2f}\x{3e}"'=]+)(.*)$/s) or
-    die $self->_parseErr($lnum, "Failed to parse tag");
-  
-  my $start_slash = $1;
-  my $ename       = $2;
-     $token       = $3;
-  
-  if (defined $start_slash) {
-    $start_slash = 1;
-  } else {
-    $start_slash = 0;
-  }
-  
-  $ename = NFC($ename);
-  _validName($ename) or
-    die $self->_parseErr($lnum, "Invalid tag name '$ename'");
 
-  # The raw attribute map starts out empty
-  my %raw_attr;
+  # End-trim the parameter substring, but leave leading whitespace
+  $pstr =~ s/[ \t\n]+$//;
+  
+  # Just return empty hash reference if parameter substring empty after
+  # end-trimming
+  (length($pstr) > 0) or return {};
+  
+  # The attribute map starts out empty
+  my %attr;
   
   # Parse any attributes and the closing tag
-  my $end_slash = 0;
-  my $found_end = 0;
-  
-  while ($token =~ /(
+  while ($pstr =~ /(
   
         # =======================
         # Double-quoted attribute
@@ -826,7 +812,7 @@ sub _procTag {
         
         (?:
           [ \t\n]+
-          [^ \t\n\x{2f}\x{3e}"'=]+
+          [^ \t\n"'=]+
           [ \t\n]*
           =
           [ \t\n]*
@@ -839,19 +825,11 @@ sub _procTag {
         
         (?:
           [ \t\n]+
-          [^ \t\n\x{2f}\x{3e}"'=]+
+          [^ \t\n"'=]+
           [ \t\n]*
           =
           [ \t\n]*
           '[^']*'
-        ) |
-        
-        # ================
-        # Closing sequence
-        # ================
-        
-        (?:
-          [ \t\n]*\x{2f}?\x{3e}
         ) |
         
         # ===========
@@ -859,7 +837,7 @@ sub _procTag {
         # ===========
         
         (?:
-          [^\x{3e}]
+          .
         )
     
       )/gsx) {
@@ -872,26 +850,10 @@ sub _procTag {
     my @apl = $part =~ /\n/g;
     $lnum += scalar(@apl);
     
-    # If we already found the tag end, error if anything more
-    (not $found_end) or
-      die $self->_parseErr($part_line, "Failed to parse tag");
-    
-    # If part is single codepoint that is not > then there is a parsing
-    # error
-    if ((length($part) == 1) and ($part ne '>')) {
-      die $self->_parseErr($part_line, "Failed to parse tag");
-    }
-    
-    # If part is the closer, then update state and proceed to next part
-    if ($part =~ /^[ \t\n]*\x{3e}$/) {
-      $end_slash = 0;
-      $found_end = 1;
-      next;
-      
-    } elsif ($part =~ /^[ \t\n]*\x{2f}\x{3e}$/) {
-      $end_slash = 1;
-      $found_end = 1;
-      next;
+    # If part is single codepoint then there is a parsing error
+    if (length($part) <= 1) {
+      die $self->_parseErr($part_line,
+        "Failed to parse tag attributes");
     }
     
     # If we got here, we should have an attribute, so parse it into an
@@ -929,7 +891,7 @@ sub _procTag {
       $att_val_line  = $att_name_line + scalar(@apl3);
       
     } else {
-      die $self->_parseErr($lnum, "Failed to parse tag");
+      die $self->_parseErr($lnum, "Failed to parse tag attributes");
     }
     
     # Normalize attribute name and verify valid
@@ -938,8 +900,7 @@ sub _procTag {
       die $self->_parseErr($att_name_line,
         "Invalid attribute name '$att_name'");
     
-    # Make sure attribute value does not have disallowed codepoints
-    # besides the delimiter
+    # Make sure attribute value does not have the disallowed <
     (not ($att_val =~ /\x{3c}/)) or
       die $self->_parseErr($att_val_line,
         "Attribute value contains unescaped <");
@@ -950,41 +911,317 @@ sub _procTag {
     $att_val = NFC(_breakNorm($att_val));
     
     # Make sure attribute not defined yet
-    (not (defined $raw_attr{$att_name})) or
+    (not (defined $attr{$att_name})) or
       die $self->_parseErr($att_name_line,
         "Attribute '$att_name' defined multiple times");
     
     # Store the attribute
-    $raw_attr{$att_name} = $att_val;
+    $attr{$att_name} = $att_val;
   }
   
-  # Make sure we found the ending
-  ($found_end) or
-    die $self->_parseErr($lnum, "Failed to parse tag");
+  # Return attribute map
+  return \%attr;
+}
+
+# _parseTag(token, lnum)
+# ----------------------
+#
+# Parse a tag token.
+#
+# The return value in list context has the following elements:
+#
+#   (1) Tag type: 1 = start, 0 = empty, -1 = end
+#   (2) Element name
+#   (3) Hash reference mapping attribute names to attribute values
+#
+# Names have been validated and normalized.  Attribute values have been
+# escaped and normalized.  End tags have been verified to have no
+# attributes.
+#
+sub _parseTag {
+  # Get self and parameters
+  ($#_ == 2) or die "Bad call";
+  my $self = shift;
+  (ref($self) and $self->isa(__PACKAGE__)) or die "Bad self";
   
-  # Get the element type as 1 opening, 0 empty, -1 closing depending on
-  # the slashes
+  my $token = shift;
+  (not ref($token)) or die "Bad call";
+  
+  my $lnum = shift;
+  _isInteger($lnum) or die "Bad call";
+  
+  # Parse the whole tag
+  ($token =~
+      /^
+        \x{3c}
+        (\x{2f})?
+        ([^ \t\n\x{2f}\x{3e}"'=]+)
+        ((?:
+          [^\x{2f}"']* |
+          (?:"[^"]*")  |
+          (?:'[^']*')
+        )*)
+        (\x{2f})?
+        \x{3e}$
+      /xs)
+    or die $self->_parseErr($lnum, "Failed to parse tag");
+  
+  my $start_slash = $1;
+  my $ename       = $2;
+  my $pstr        = $3;
+  my $end_slash   = $4;
+  
+  # Determine the tag type
   my $etype;
-  if (($start_slash == 0) and ($end_slash == 0)) {
+  if ((not defined $start_slash) and (not defined $end_slash)) {
     $etype = 1;
-    
-  } elsif (($start_slash == 1) and ($end_slash == 0)) {
+  
+  } elsif ((defined $start_slash) and (not defined $end_slash)) {
     $etype = -1;
     
-  } elsif (($start_slash == 0) and ($end_slash == 1)) {
+  } elsif ((not defined $start_slash) and (defined $end_slash)) {
     $etype = 0;
     
   } else {
     die $self->_parseErr($lnum, "Failed to parse tag");
   }
   
-  # If this is a closing element, make sure there are no attributes
+  # Normalize element name and validate it
+  $ename = NFC($ename);
+  _validName($ename) or
+    die $self->_parseErr($lnum, "Invalid tag name '$ename'");
+  
+  # Parse attributes
+  my $attr = $self->_parseAttr($pstr, $lnum);
+  
+  # If closing tag, make sure no attributes
   if ($etype < 0) {
-    if (scalar(%raw_attr) > 0) {
+    (scalar(%$attr) < 1) or
       die $self->_parseErr($lnum,
-        "Closing element may not have attributes");
+        "Closing tags may not have attributes");
+  }
+  
+  # Return parsed tag
+  return ($etype, $ename, $attr);
+}
+
+# _updateNS(attr, lnum)
+# ---------------------
+#
+# Update the namespace stack before processing a starting or empty tag.
+#
+# attr is the raw attribute map.  lnum is the line number of the tag.
+# A new entry will be pushed onto the namespace stack by this fucntion.
+#
+sub _updateNS {
+  # Get self and parameters
+  ($#_ == 2) or die "Bad call";
+  my $self = shift;
+  (ref($self) and $self->isa(__PACKAGE__)) or die "Bad self";
+  
+  my $attr = shift;
+  (ref($attr) eq 'HASH') or die "Bad call";
+  
+  my $lnum = shift;
+  _isInteger($lnum) or die "Bad call";
+  
+  # The new_ns map contains new namespace mappings defined in this
+  # element
+  my %new_ns;
+  
+  # Go through attributes
+  for my $k (keys %$attr) {
+    # Get the prefix mapped by this attribute, or skip attribute if
+    # not a namespace mapping
+    my $target_pfx = undef;
+    
+    my ($pfx, $lp) = _splitName($k);
+    if (defined $pfx) {
+      if ($pfx eq 'xmlns') {
+        $target_pfx = $lp;
+      }
+    } else {
+      if ($lp eq 'xmlns') {
+        $target_pfx = '';
+      }
+    }
+    
+    (defined $target_pfx) or next;
+    
+    # For diagnostics, get a label of what is being mapped
+    my $target_label;
+    if (length($target_pfx) > 0) {
+      $target_label = "namespace prefix '$target_pfx'";
+    } else {
+      $target_label = "default namespace";
+    }
+    
+    # Get value of this namespace target and make sure not empty
+    my $ns_val = $attr->{$k};
+    (length($ns_val) > 0) or
+      die $self->_parseErr($lnum,
+        "Can't map $target_label to empty value");
+    
+    # Make sure not mapping the xmlns prefix
+    ($target_pfx ne 'xmlns') or
+      die $self->_parseErr($lnum,
+        "Can't namespace map the xmlns prefix");
+    
+    # Make sure not mapping to reserved xmlns namespace
+    ($ns_val ne 'http://www.w3.org/2000/xmlns/') or
+      die $self->_parseErr($lnum,
+        "Can't map $target_label to reserved xmlns value");
+    
+    # If target prefix is "xml" make sure mapping to proper namespace;
+    # otherwise, make sure not mapping to XML namespace
+    if ($target_pfx eq 'xml') {
+      ($ns_val eq 'http://www.w3.org/XML/1998/namespace') or
+        die $self->_parseErr($lnum,
+          "Can only map $target_label to reserved xml value");
+    } else {
+      ($ns_val ne 'http://www.w3.org/XML/1998/namespace') or
+        die $self->_parseErr($lnum,
+          "Can't map $target_label to reserved xml value");
+    }
+    
+    # Make sure this mapping not yet defined on this element
+    (not (defined $new_ns{$target_pfx})) or
+      die $self->_parseErr($lnum,
+        "Redefinition of $target_label on same element");
+    
+    # Add to new mappings
+    $new_ns{$target_pfx} = $ns_val;
+  }
+  
+  # If at least one new mapping, then make a copy of the namespace
+  # context on top of the stack, modify it, and push it back;
+  # otherwise, just duplicate the reference on top of the namespace
+  # stack
+  if (scalar(%new_ns) > 0) {
+    # New definitions, so make a copy of the namespace on top of the
+    # stack
+    my %nsa = map { $_ } %{$self->{'_nstack'}->[-1]};
+    
+    # Update namespace
+    for my $kv (keys %new_ns) {
+      $nsa{$kv} = $new_ns{$kv};
+    }
+    
+    # Push updated namespace
+    push @{$self->{'_nstack'}}, (\%nsa);
+    
+  } else {
+    # No new definitions, just duplicate reference on top
+    push @{$self->{'_nstack'}}, ($self->{'_nstack'}->[-1]);
+  }
+}
+
+# _plainAttr(attr, lnum)
+# ----------------------
+#
+# Return a subset attribute mapping that only contains attributes which
+# have no namespace prefix and which are not "xmlns".  The return value
+# is a hash reference.
+#
+sub _plainAttr {
+  # Get self and parameters
+  ($#_ == 2) or die "Bad call";
+  my $self = shift;
+  (ref($self) and $self->isa(__PACKAGE__)) or die "Bad self";
+  
+  my $attr = shift;
+  (ref($attr) eq 'HASH') or die "Bad call";
+  
+  my $lnum = shift;
+  _isInteger($lnum) or die "Bad call";
+  
+  # Form the subset
+  my %result;
+  for my $k (keys %$attr) {
+    my ($k_pfx, $k_local) = _splitName($k);
+    if ((not defined $k_pfx) and ($k ne 'xmlns')) {
+      $result{$k} = $attr->{$k};
     }
   }
+  
+  # Return result
+  return \%result;
+}
+
+# _extAttr(attr, lnum)
+# --------------------
+#
+# Return a namespaced attribute mapping.  The return value is a
+# two-level hash reference.
+#
+sub _extAttr {
+  # Get self and parameters
+  ($#_ == 2) or die "Bad call";
+  my $self = shift;
+  (ref($self) and $self->isa(__PACKAGE__)) or die "Bad self";
+  
+  my $attr = shift;
+  (ref($attr) eq 'HASH') or die "Bad call";
+  
+  my $lnum = shift;
+  _isInteger($lnum) or die "Bad call";
+  
+  # Form the set
+  my %result;
+  for my $k (keys %$attr) {
+    # Split attribute name if possible
+    my ($k_pfx, $k_local) = _splitName($k);
+    
+    # Only process attributes that have a prefix which is not "xmlns"
+    if ((defined $k_pfx) and ($k_pfx ne 'xmlns')) {
+      # Get namespace value for prefix
+      my $a_ns = $self->{'_nstack'}->[-1]->{$k_pfx};
+      (defined $a_ns) or
+        die $self->_parseErr($lnum,
+          "Unmapped namespace prefix '$k_pfx'");
+      
+      # Add new namespace entry if not yet defined
+      unless (defined $result{$a_ns}) {
+        $result{$a_ns} = {};
+      }
+      
+      # Make sure local attribute not yet defined
+      (not defined $result{$a_ns}->{$k_local}) or
+        die $self->_parseErr($lnum,
+          "Aliased external attribute '$k'");
+      
+      # Add namespaced attribute
+      $result{$a_ns}->{$k_local} = $attr->{$k};
+    }
+  }
+  
+  # Return result
+  return \%result;
+}
+
+# _procTag(token, lnum)
+# ---------------------
+#
+# Process a tag assembly.
+#
+# token is the whole tag token.  lnum is the line number that the tag
+# token began.  It is assumed that line break normalization has already
+# been performed on the token.
+#
+sub _procTag {
+  # Get self and parameters
+  ($#_ == 2) or die "Bad call";
+  my $self = shift;
+  (ref($self) and $self->isa(__PACKAGE__)) or die "Bad self";
+  
+  my $token = shift;
+  (not ref($token)) or die "Bad call";
+  
+  my $lnum = shift;
+  _isInteger($lnum) or die "Bad call";
+  
+  # Parse the tag
+  my ($etype, $ename, $raw_attr) = $self->_parseTag($token, $lnum);
   
   # If this is an opening or empty element, verify that tag state is not
   # finished and then push the element name on the tag stack and set tag
@@ -1017,141 +1254,43 @@ sub _procTag {
   # If this is an opening or empty element, go through all the raw
   # attributes and update namespace stack
   if ($etype >= 0) {
-    # The new_ns map contains new namespaces defined in this element
-    my %new_ns;
-    
-    # Go through attributes
-    for my $k (keys %raw_attr) {
-      # Get the prefix mapped by this attribute, or skip attribute if
-      # not a namespace mapping
-      my $target_pfx = undef;
-      
-      my ($pfx, $lp) = _splitName($k);
-      if (defined $pfx) {
-        if ($pfx eq 'xmlns') {
-          $target_pfx = $lp;
-        }
-      } else {
-        if ($lp eq 'xmlns') {
-          $target_pfx = '';
-        }
-      }
-      
-      (defined $target_pfx) or next;
-      
-      # Get value of this namespace target and make sure not empty
-      my $ns_val = $raw_attr{$k};
-      (length($ns_val) > 0) or
-        die $self->_parseErr($lnum, "Can't map namespace to empty");
-      
-      # Make sure not mapping the xmlns prefix
-      ($target_pfx ne 'xmlns') or
-        die $self->_parseErr($lnum,
-          "Can't namespace map the xmlns prefix");
-      
-      # Make sure not mapping to reserved xmlns namespace
-      ($ns_val ne 'http://www.w3.org/2000/xmlns/') or
-        die $self->_parseErr($lnum,
-          "Can't map namespace to xmlns value");
-      
-      # If target prefix is "xml" make sure mapping to proper namespace;
-      # otherwise, make sure not mapping to XML namespace
-      if ($target_pfx eq 'xml') {
-        ($ns_val eq 'http://www.w3.org/XML/1998/namespace') or
-          die $self->_parseErr($lnum,
-            "Can't remap xml namespace prefix");
-      } else {
-        ($ns_val ne 'http://www.w3.org/XML/1998/namespace') or
-          die $self->_parseErr($lnum,
-            "Can't alias xml namespace");
-      }
-      
-      # Make sure this mapping not yet defined on this element
-      (not (defined $new_ns{$target_pfx})) or
-        die $self->_parseErr($lnum,
-          "Redefinition of '$target_pfx' prefix on same element");
-      
-      # Add to new mappings
-      $new_ns{$target_pfx} = $ns_val;
-    }
-    
-    # If at least one new mapping, then make a copy of the namespace
-    # context on top of the stack, modify it, and push it back;
-    # otherwise, just duplicate the reference on top of the namespace
-    # stack
-    if (scalar(%new_ns) > 0) {
-      # New definitions, so make a copy of the namespace on top of the
-      # stack
-      my %nsa = map { $_ } %{$self->{'_nstack'}->[-1]};
-      
-      # Update namespace
-      for my $kv (keys %new_ns) {
-        $nsa{$kv} = $new_ns{$kv};
-      }
-      
-      # Push updated namespace
-      push @{$self->{'_nstack'}}, (\%nsa);
-      
-    } else {
-      # No new definitions, just duplicate reference on top
-      push @{$self->{'_nstack'}}, ($self->{'_nstack'}->[-1]);
-    }
+    $self->_updateNS($raw_attr, $lnum);
   }
   
   # Parse the element name according to namespaces
-  my ($e_ns, $e_local) = _splitName($ename);
-  if (defined $e_ns) {
-    (defined $self->{'_nstack'}->[-1]->{$e_ns}) or
+  my ($e_pfx, $e_local) = _splitName($ename);
+  my $e_ns;
+  if (defined $e_pfx) {
+    $e_ns = $self->{'_nstack'}->[-1]->{$e_pfx};
+    (defined $e_ns) or
       die $self->_parseErr($lnum,
-        "Unmapped namespace prefix '$e_ns'");
-    $e_ns = $self->{'_nstack'}->[-1]->{$e_ns};
+        "Unmapped namespace prefix '$e_pfx'");
   }
   
   # If no defined namespace for element but a default namespace, then
   # use the default namespace
   unless (defined $e_ns) {
-    if (defined $self->{'_nstack'}->[-1]->{''}) {
-      $e_ns = $self->{'_nstack'}->[-1]->{''};
-    }
+    $e_ns = $self->{'_nstack'}->[-1]->{''};
   }
   
-  # The %atts map will have all attributes that do not have a prefix and
+  # The atts map will have all attributes that do not have a prefix and
   # that are not the special "xmlns" attribute; only has entries for
   # starting and empty tags
-  my %atts;
+  my $atts;
   if ($etype >= 0) {
-    for my $k (keys %raw_attr) {
-      my ($k_pfx, $k_local) = _splitName($k);
-      if ((not defined $k_pfx) and ($k ne 'xmlns')) {
-        $atts{$k} = $raw_attr{$k};
-      }
-    }
+    $atts = $self->_plainAttr($raw_attr, $lnum);
+  } else {
+    $atts = {};
   }
   
-  # The %ext map will have all the namespace attributes that do not have
+  # The ext map will have all the namespace attributes that do not have
   # the special "xmlns:" prefix; only has entries for starting and empty
   # tags
-  my %ext;
+  my $ext;
   if ($etype >= 0) {
-    for my $k (keys %raw_attr) {
-      my ($k_pfx, $k_local) = _splitName($k);
-      if ((defined $k_pfx) and ($k_pfx ne 'xmlns')) {
-        (defined $self->{'_nstack'}->[-1]->{$k_pfx}) or
-          die $self->_parseErr($lnum,
-            "Unmapped namespace prefix '$k_pfx'");
-        
-        my $a_ns = $self->{'_nstack'}->[-1]->{$k_pfx};
-        unless (defined $ext{$a_ns}) {
-          $ext{$a_ns} = {};
-        }
-        
-        (not defined $ext{$a_ns}->{$k_local}) or
-          die $self->_parseErr($lnum,
-            "Aliased external attribute '$k'");
-        
-        $ext{$a_ns}->{$k_local} = $raw_attr{$k};
-      }
-    }
+    $ext = $self->_extAttr($raw_attr, $lnum);
+  } else {
+    $ext = {};
   }
   
   # If this is a closing or empty element, pop the namespace stack
@@ -1164,17 +1303,17 @@ sub _procTag {
     # Starting tag or empty tag, so add a starting tag event to the
     # buffer
     push @{$self->{'_buf'}}, ([
-      $tag_lnum,
+      $lnum,
       $e_local,
       $e_ns,
-      \%atts,
-      \%ext
+      $atts,
+      $ext
     ]);
   }
   
   if ($etype <= 0) {
     # Empty tag or ending tag, so add an ending tag event to the buffer
-    push @{$self->{'_buf'}}, ([$tag_lnum]);
+    push @{$self->{'_buf'}}, ([$lnum]);
   }
 }
 
