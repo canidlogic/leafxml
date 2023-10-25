@@ -266,6 +266,29 @@ sub _breakNorm {
   return $str;
 }
 
+# _wsCompress(str)
+# ----------------
+#
+# Perform whitespace compression on the given string and return the
+# compressed version.
+#
+sub _wsCompress {
+  # Get parameters
+  ($#_ == 0) or die "Bad call";
+  my $str = shift;
+  (not ref($str)) or die "Bad call";
+  
+  # Compress whitespace sequences to single spaces
+  $str =~ s/[ \t\n\r]+/ /g;
+  
+  # Trim leading and trailing spaces
+  $str =~ s/^\x{20}//;
+  $str =~ s/\x{20}$//;
+  
+  # Return compressed string
+  return $str;
+}
+
 # _splitName(str)
 # ---------------
 #
@@ -774,8 +797,8 @@ sub _entEsc {
 #
 # Parse the attribute substring of a tag token.  Returns a hash
 # reference mapping attribute names to attribute values.  Names have
-# been validated and normalized.  Attribute values have been escaped and
-# normalized.
+# been validated and normalized.  Attribute values have been escaped,
+# whitespace-compressed, and normalized.
 #
 # The attribute substring, if it is not empty, should begin with at
 # least one codepoint of whitespace which separates it from the the
@@ -905,10 +928,10 @@ sub _parseAttr {
       die $self->_parseErr($att_val_line,
         "Attribute value contains unescaped <");
     
-    # Entity-escape, line-break-normalize, and NFC normalize the
+    # Entity-escape, whitespace-compress, and NFC normalize the
     # attribute value
     $att_val = $self->_entEsc($att_val, $att_val_line);
-    $att_val = NFC(_breakNorm($att_val));
+    $att_val = NFC(_wsCompress($att_val));
     
     # Make sure attribute not defined yet
     (not (defined $attr{$att_name})) or

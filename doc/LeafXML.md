@@ -98,6 +98,21 @@ There is no difference in meaning between a named escape, a decimal numeric esca
 
 Numeric escapes are only allowed to escape codepoints that are within the character set defined ealier.  For example, `&#xFFFE;` is not allowed because U+FFFE is not within the character set.
 
+### Whitespace compression
+
+The whitespace compression algorithm takes as input a sequence of codepoints and returns a transformed sequence of codepoints where all whitespace has been "compressed."
+
+All whitespace sequences consisting only of the following codepoints are replaced with a single U+0020 SP codepoint:
+
+- U+0009 Horizontal Tab (HT)
+- U+000A Line Feed (LF)
+- U+000D Carriage Return (CR)
+- U+0020 Space (SP)
+
+After that replacement is performed, any leading or trailing U+0020 SP codepoints are dropped from the string.
+
+The result is that U+0020 SP is the only XML whitespace codepoint used in the compressed string, it is neither the first nor last codepoint in a compressed string, and two U+0020 SP codepoints never occur next to each other in a compressed string.
+
 ## Tokenizing
 
 Unicode codepoints within a LeafXML file are parsed into a sequence of _tokens._  Each token consists of a non-empty sequence of Unicode codepoints.  Concatenating each of the tokens together yields the full sequence of codepoints in the file.
@@ -299,7 +314,7 @@ The tag type is determined by the presence of slashes next to the angle brackets
 
 Each attribute name is normalized according to NFC and used as the key in the attribute mapping.  Attribute names are case-sensitive.  It is an error if the same tag has more than one attribute with the same attribute name.
 
-Each attribute value is decoded first by entity escaping, second by line break normalization, and third by Unicode normalization to NFC.  Line break normalization is required again because line breaks may have been encoded in entity escapes.  Empty attribute values are allowed.
+Each attribute value is decoded first by entity escaping, second by whitespace compression, and third by Unicode normalization to NFC.  Empty attribute values are allowed.
 
 ## Empty tag expansion
 

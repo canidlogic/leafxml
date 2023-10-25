@@ -18,6 +18,24 @@ window.LeafXML = (function() {
    */
   
   /*
+   * Regular expression that matches any sequences of XML whitespace
+   * characters within a string.
+   */
+  const RX_COMPRESS_WS = new RegExp(
+    "[ \t\n\r]+",
+    "usg"
+  );
+  
+  /*
+   * Regular expression that matches whitespace at the start of a
+   * string, for use in whitespace trimming according to XML.
+   */
+  const RX_START_TRIM = new RegExp(
+    "^[ \t\n]+",
+    "us"
+  );
+  
+  /*
    * Regular expression that matches whitespace at the end of a string,
    * for use in whitespace trimming according to XML.
    */
@@ -329,6 +347,34 @@ window.LeafXML = (function() {
     }
     RX_END_TRIM.lastIndex = 0;
     return str.replace(RX_END_TRIM, "");
+  }
+  
+  /*
+   * Perform whitespace compression on the given string and return the
+   * compressed version.
+   * 
+   * Parameters:
+   * 
+   *   str - the string to whitespace-compress
+   * 
+   * Return:
+   * 
+   *   the compressed string
+   */
+  function wsCompress(str) {
+    if (typeof str !== "string") {
+      throw new Error();
+    }
+    
+    RX_COMPRESS_WS.lastIndex = 0;
+    RX_START_TRIM.lastIndex  = 0;
+    RX_END_TRIM.lastIndex    = 0;
+    
+    str = str.replaceAll(RX_COMPRESS_WS, " ");
+    str = str.replace(RX_START_TRIM, "");
+    str = str.replace(RX_END_TRIM, "");
+    
+    return str;
   }
   
   /*
@@ -982,10 +1028,10 @@ window.LeafXML = (function() {
           "Attribute value contains unescaped <");
       }
       
-      // Entity-escape, line-break-normalize, and NFC normalize the
+      // Entity-escape, whitespace-compress, and NFC normalize the
       // attribute value
       att_val = this._entEsc(att_val, att_val_line);
-      att_val = breakNorm(att_val).normalize("NFC");
+      att_val = wsCompress(att_val).normalize("NFC");
       
       // Make sure attribute not defined yet
       if (att_name in attr) {
