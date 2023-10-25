@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"/>
+    <title>LeafXML parser demo</title>
+    <meta name="viewport"  
+      content="width=device-width, initial-scale=1.0"/>
+    <link href="leafxml_parse.css" rel="stylesheet"/>
+    <script src="leafxml.js"></script>
+    <script src="leafxml_parse.js"></script>
+  </head>
+  <body>
+    <h1>LeafXML parser demo</h1>
+    <div class="clsLabel">Enter XML file:</div>
+    <textarea
+      id="txtInput"
+      autocorrect="off"
+      autofocus
+      spellcheck="false"></textarea>
+    <div class="clsButtonRow">
+      <button id="btnParse" type="button">Parse</button>
+    </div>
+    <div class="clsLabel">Upload XML file:</div>
+    <div id="divUploadRow">
+      <input type="file" id="filUpload"/>
+    </div>
+    <div class="clsButtonRow">
+      <button id="btnUpload" type="button">Parse upload</button>
+    </div>
+    <h2>Parsing results</h2>
+    <div id="divResult">&nbsp;</div>
+  </body>
+</html>
