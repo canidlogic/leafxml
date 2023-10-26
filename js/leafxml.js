@@ -572,6 +572,31 @@ window.LeafXML = (function() {
   }
   
   /*
+   * ParserFault class
+   * =================
+   * 
+   * This simple class just stores an parsing error message as a string.
+   * 
+   * Instances of this class are thrown instead of Error when a parsing
+   * error occurs.  This allows clients to distinguish between parsing
+   * errors and all other kinds of errors.
+   * 
+   * This class has a message property and a toString() implementation
+   * so that it works the same way as Error in most cases.
+   */
+  
+  function ParserFault(message) {
+    if (typeof message !== "string") {
+      throw new Error();
+    }
+    this.message = message;
+  }
+  
+  ParserFault.prototype.toString = function() {
+    return "ParserFault: " + this.message;
+  };
+  
+  /*
    * Constructor
    * ===========
    */
@@ -680,13 +705,13 @@ window.LeafXML = (function() {
    * 
    * Parameters:
    * 
-   *   lnum - the line number
+   *   lnum - the line number in the XML file
    * 
    *   detail - the detail of the error message
    * 
    * Return:
    * 
-   *   an Error object that can be thrown
+   *   an ParserFault object that can be thrown
    */
   Parser.prototype._parseErr = function(lnum, detail) {
     // Check parameters
@@ -711,7 +736,7 @@ window.LeafXML = (function() {
     msg = msg + "] " + detail;
     
     // Return error
-    return new Error(msg);
+    return new ParserFault(msg);
   };
   
   /*
@@ -1929,10 +1954,11 @@ window.LeafXML = (function() {
    */
   
   return {
-    "validCode"  : validCode,
-    "validString": validString,
-    "validName"  : validName,
-    "Parser"     : Parser
+    "validCode"   : validCode,
+    "validString" : validString,
+    "validName"   : validName,
+    "ParserFault" : ParserFault,
+    "Parser"      : Parser
   };
   
 }());

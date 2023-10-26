@@ -310,10 +310,16 @@ window.ParseApp = (function() {
       result = result + "</ul>";
       
     } catch (ex) {
-      // Report the error
-      result = "<b>Error:</b> " + escapeText(ex.message);
-      divResult.innerHTML = result;
-      throw ex;
+      // Check error type
+      if (ex instanceof LeafXML.ParserFault) {
+        // Parser fault, so report the error
+        result = "<b>Error:</b> " + escapeText(ex.message);
+        divResult.innerHTML = result;
+      } else {
+        // Non-parser error, so report and rethrow
+        divResult.innerHTML = "<b>Unexpected error</b>";
+        throw ex;
+      }
     }
     
     // Write the results
