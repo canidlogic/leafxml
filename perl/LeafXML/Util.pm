@@ -4,6 +4,7 @@ use warnings;
 use parent qw(Exporter);
 
 use Carp;
+use Encode qw(decode encode);
 use Scalar::Util qw(looks_like_number);
 
 =head1 NAME
@@ -17,6 +18,7 @@ LeafXML::Util - Utility functions for LeafXML.
     validCode
     validString
     validName
+    readFullText
   );
   
   # Check whether a given value is a scalar integer
@@ -38,6 +40,14 @@ LeafXML::Util - Utility functions for LeafXML.
   if (validName($str)) {
     ...
   }
+  
+  # Read a whole text file into a Unicode string
+  my $text;
+  readFullText(\$text, "/path/to/file.txt");
+  
+  # Read standard input into a Unicode string
+  my $text;
+  readFullText(\$text);
 
 =head1 DESCRIPTION
 
@@ -185,6 +195,102 @@ sub validName {
   return $result;
 }
 
+=item B<readFullText(\$target, [path])>
+
+Read a whole text file into a decoded Unicode string.
+
+The first parameter is always a reference to a scalar where the text
+will be stored.  This scalar will have one character per codepoint, and
+never has any Byte Order Mark.
+
+If the second parameter is present, it is a scalar specifying a file
+path to the text file to load the text from.  If the second parameter is
+absent, the file is read from standard input.
+
+This function supports UTF-8 with or without a Byte Order Mark, and
+UTF-16 with a Byte Order Mark.
+
+=cut
+
+sub readFullText {
+  # Get parameters
+  ($#_ >= 0) or croak("Bad call");
+  
+  my $target = shift;
+  (ref($target) eq 'SCALAR') or croak("Bad call");
+  
+  my $path = undef;
+  if ($#_ >= 0) {
+    $path = shift;
+    (defined $path) or croak("Bad call");
+    (not ref($path)) or croak("Bad call");
+  }
+  
+  ($#_ < 0) or croak("Bad call");
+  
+  # Read whole input into a binary string
+  if (defined $path) {
+    (-f $path) or die "Failed to find file: $path";
+    open(my $fh, "< :raw", $path) or
+      die "Failed to open file: $path";
+    
+    {
+      local $/;
+      $$target = readline($fh);
+      1;
+    }
+    
+    (defined $$target) or die "Failed to read file: $path";
+    close($fh) or warn "Failed to close file";
+    
+  } else {
+    binmode(STDIN, ":raw") or die "Failed to set I/O mode";
+    
+    {
+      local $/;
+      $$target = readline(STDIN);
+      1;
+    }
+    
+    (defined $$target) or die "Failed to read standard input";
+  }
+  
+  # Figure out encoding from opening bytes and skip over any byte order
+  # mark
+  my $enc_name;
+  if ($$target =~ /^\x{ef}\x{bb}\x{bf}/) {
+    # UTF-8 with byte order mark
+    $$target =~ s/^\x{ef}\x{bb}\x{bf}//;
+    $enc_name = "UTF-8";
+    
+  } elsif ($$target =~ /^\x{fe}\x{ff}/) {
+    # UTF-16 Big Endian
+    $$target =~ s/^\x{fe}\x{ff}//;
+    $enc_name = "UTF-16BE";
+  
+  } elsif ($$target =~ /^\x{ff}\x{fe}/) {
+    # UTF-16 Little Endian
+    $$target =~ s/^\x{ff}\x{fe}//;
+    $enc_name = "UTF-16LE";
+  
+  } else {
+    # UTF-8 with no byte order mark
+    $enc_name = "UTF-8";
+  }
+  
+  # In-place decoding with check
+  eval {
+    $$target = decode($enc_name, $$target, Encode::FB_CROAK);
+  };
+  if ($@) {
+    if (defined $path) {
+      die "Invalid encoding in file: $path";
+    } else {
+      die "Invalid encoding in standard input";
+    }
+  }
+}
+
 =back
 
 =cut
@@ -198,6 +304,7 @@ our @EXPORT_OK = qw(
   validCode
   validString
   validName
+  readFullText
 );
 
 # End with something that evaluates to true

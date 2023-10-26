@@ -3,6 +3,7 @@ use v5.16;
 use warnings;
 
 use LeafXML::Parser;
+use LeafXML::Util qw(readFullText);
 
 =head1 NAME
 
@@ -134,19 +135,14 @@ sub encodeAttrText {
 #
 (scalar(@ARGV) < 1) or die "Not expecting program arguments";
 
-# Set input and output modes
+# Set output mode
 #
-binmode(STDIN,  ":encoding(UTF-8)") or die "Failed to set I/O mode";
 binmode(STDOUT, ":encoding(UTF-8)") or die "Failed to set I/O mode";
 
 # Read the whole file
 #
 my $xml_text;
-{
-  local $/;
-  $xml_text = readline(STDIN);
-  1;
-}
+readFullText(\$xml_text);
 
 # Load the parser
 #
