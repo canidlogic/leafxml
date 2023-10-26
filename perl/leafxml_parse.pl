@@ -165,11 +165,11 @@ while($xml->readEvent) {
       $xml->elementName;
     
     # Plain attributes
-    my %atts = $xml->attr;
-    for my $k (sort keys %atts) {
+    my $atts = $xml->attr;
+    for my $k (sort keys %$atts) {
       printf " 0:%s=\"%s\"",
         $k,
-        encodeAttrText($atts{$k});
+        encodeAttrText($atts->{$k});
     }
     
     # External namespaced attributes

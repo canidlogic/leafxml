@@ -28,18 +28,18 @@ LeafXML::Parser - XML parser for LeafXML subset.
       my $lnum  = $xml->lineNumber;
       my $ename = $xml->elementName;
       my $ns_e  = $xml->elementNS;
-      my %atts  = $xml->attr;
+      my $atts  = $xml->attr;
       my $ext   = $xml->externalAttr;
       
       # Iterate through all attributes not in a namespace
-      for my $k (keys %atts) {
-        my $v = $atts{$k};
+      for my $k (keys %$atts) {
+        my $v = $atts->{$k};
         ...
       }
       
       # Iterate through all namespaced attributes
       for my $ns (keys %$ext) {
-        for my $k (keys %{$ext->{$ns}}) {
+        for my $k (keys %{{$ext}->{$ns}}) {
           my $v = $ext->{$ns}->{$k};
           ...
         }
@@ -60,7 +60,7 @@ LeafXML::Parser - XML parser for LeafXML subset.
 
 =head1 DESCRIPTION
 
-Parser for the LeafXML subset of XML.
+Parser for LeafXML.
 
 The parser operates on a string that has already been decoded into
 Unicode codepoints.  An event-based model is used to interpret the XML
@@ -70,7 +70,46 @@ instead of callbacks.
 The only three event types used in LeafXML are starting tags, ending
 tags, and content text that appears between tags.
 
+LeafXML should in most cases be able to parse regular XML files, though
+there are some obscure differences between LeafXML and XML.  See the
+LeafXML specification for further information.
+
 =cut
+
+# =========
+# Constants
+# =========
+
+# Define a regular expression that matches a string containing zero or
+# more codepoints that are valid according to the LeafXML character set.
+#
+my $VALID_STRING_CHARS =
+    "^[\\t\\n\\r\\x{20}-\\x{7e}\\x{85}\\x{a0}-\\x{d7ff}"
+  . "\\x{e000}-\\x{fdcf}\\x{fdf0}-\\x{fffd}"
+  . "\\x{10000}-\\x{1fffd}\\x{20000}-\\x{2fffd}\\x{30000}-\\x{3fffd}"
+  . "\\x{40000}-\\x{4fffd}\\x{50000}-\\x{5fffd}\\x{60000}-\\x{6fffd}"
+  . "\\x{70000}-\\x{7fffd}\\x{80000}-\\x{8fffd}\\x{90000}-\\x{9fffd}"
+  . "\\x{a0000}-\\x{afffd}\\x{b0000}-\\x{bfffd}\\x{c0000}-\\x{cfffd}"
+  . "\\x{d0000}-\\x{dfffd}\\x{e0000}-\\x{efffd}\\x{f0000}-\\x{ffffd}"
+  . "\\x{100000}-\\x{10fffd}]*\$";
+$VALID_STRING_CHARS = qr/$VALID_STRING_CHARS/;
+
+# Define a regular expression that matches a string containing one or
+# more codepoints that are allowed as XML name codepoints.  This allows
+# colons.  It does not check the restrictions on the first character of
+# names.
+#
+my $VALID_NAME_CHARS =
+    "^[\\-\\.0-9:_A-Za-z\\x{b7}\\x{c0}-\\x{d6}\\x{d8}-\\x{f6}"
+  . "\\x{f8}-\\x{37d}\\x{37f}-\\x{1fff}\\x{200c}\\x{200d}"
+  . "\\x{203f}\\x{2040}\\x{2070}-\\x{218f}\\x{2c00}-\\x{2fef}"
+  . "\\x{3001}-\\x{d7ff}\\x{f900}-\\x{fdcf}\\x{fdf0}-\\x{fffd}"
+  . "\\x{10000}-\\x{1fffd}\\x{20000}-\\x{2fffd}\\x{30000}-\\x{3fffd}"
+  . "\\x{40000}-\\x{4fffd}\\x{50000}-\\x{5fffd}\\x{60000}-\\x{6fffd}"
+  . "\\x{70000}-\\x{7fffd}\\x{80000}-\\x{8fffd}\\x{90000}-\\x{9fffd}"
+  . "\\x{a0000}-\\x{afffd}\\x{b0000}-\\x{bfffd}\\x{c0000}-\\x{cfffd}"
+  . "\\x{d0000}-\\x{dfffd}\\x{e0000}-\\x{efffd}]+\$";
+$VALID_NAME_CHARS = qr/$VALID_NAME_CHARS/;
 
 # ===============
 # Local functions
@@ -136,41 +175,7 @@ sub _validString {
   
   my $result = 0;
   
-  if ($str =~ /^(?:
-  
-        (?:
-          [\t\n\r\x{20}-\x{7e}\x{85}\x{a0}-\x{d7ff}]+
-        ) |
-        
-        (?:
-          [\x{e000}-\x{fdcf}\x{fdf0}-\x{fffd}]+
-        ) |
-        
-        (?:
-          [\x{10000}-\x{1fffd}\x{20000}-\x{2fffd}\x{30000}-\x{3fffd}]+
-        ) |
-        
-        (?:
-          [\x{40000}-\x{4fffd}\x{50000}-\x{5fffd}\x{60000}-\x{6fffd}]+
-        ) |
-        
-        (?:
-          [\x{70000}-\x{7fffd}\x{80000}-\x{8fffd}\x{90000}-\x{9fffd}]+
-        ) |
-        
-        (?:
-          [\x{a0000}-\x{afffd}\x{b0000}-\x{bfffd}\x{c0000}-\x{cfffd}]+
-        ) |
-        
-        (?:
-          [\x{d0000}-\x{dfffd}\x{e0000}-\x{efffd}\x{f0000}-\x{ffffd}]+
-        ) |
-        
-        (?:
-          [\x{100000}-\x{10fffd}]+
-        )
-  
-      )*$/x) {
+  if ($str =~ $VALID_STRING_CHARS) {
     $result = 1;
   }
   
@@ -191,45 +196,7 @@ sub _validName {
   
   # Check that name is sequence of one or more name codepoints
   my $result = 1;
-  unless ($str =~ /^(?:
-        
-        (?:
-          [\-\.0-9:_A-Za-z\x{b7}\x{c0}-\x{d6}\x{d8}-\x{f6}]+
-        ) |
-        
-        (?:
-          [\x{f8}-\x{37d}\x{37f}-\x{1fff}\x{200c}\x{200d}]+
-        ) |
-        
-        (?:
-          [\x{203f}\x{2040}\x{2070}-\x{218f}\x{2c00}-\x{2fef}]+
-        ) |
-        
-        (?:
-          [\x{3001}-\x{d7ff}\x{f900}-\x{fdcf}\x{fdf0}-\x{fffd}]+
-        ) |
-        
-        (?:
-          [\x{10000}-\x{1fffd}\x{20000}-\x{2fffd}\x{30000}-\x{3fffd}]+
-        ) |
-        
-        (?:
-          [\x{40000}-\x{4fffd}\x{50000}-\x{5fffd}\x{60000}-\x{6fffd}]+
-        ) |
-        
-        (?:
-          [\x{70000}-\x{7fffd}\x{80000}-\x{8fffd}\x{90000}-\x{9fffd}]+
-        ) |
-        
-        (?:
-          [\x{a0000}-\x{afffd}\x{b0000}-\x{bfffd}\x{c0000}-\x{cfffd}]+
-        ) |
-        
-        (?:
-          [\x{d0000}-\x{dfffd}\x{e0000}-\x{efffd}]+
-        )
-        
-      )+$/x) {
+  unless ($str =~ $VALID_NAME_CHARS) {
     $result = 0;
   }
   
@@ -826,7 +793,7 @@ sub _parseAttr {
   # The attribute map starts out empty
   my %attr;
   
-  # Parse any attributes and the closing tag
+  # Parse any attributes
   while ($pstr =~ /(
   
         # =======================
@@ -1532,7 +1499,8 @@ sub readEvent {
   }
   
   # If buffer is filled then grab the next event and set the result;
-  # else, clear the results and clear the current event
+  # else, clear the results, clear the current event, and verify that in
+  # finished state
   my $result = 0;
   if (scalar(@{$self->{'_buf'}}) > 0) {
     $result = 1;
@@ -1540,6 +1508,13 @@ sub readEvent {
   } else {
     $result = 0;
     $self->{'_cur'} = undef;
+    if ($self->{'_tstate'} >= 0) {
+      if ($self->{'_tstate'} == 0) {
+        die $self->_parseErr(-1, "Unclosed tags at end of XML");
+      } else {
+        die $self->_parseErr(-1, "Missing root element");
+      }
+    }
   }
   
   # Return result
@@ -1695,7 +1670,9 @@ sub elementNS {
 
 =item B<attr()>
 
-Return the plain attribute map as a hash in list context.
+Return the plain attribute map.  This is returned as a hash reference.
+It is I<not> a copy of the parsed hash reference, so you shouldn't
+modify it.
 
 This function may only be used after C<readEvent()> has indicated that
 an event is available and C<eventType> indicates 1 (starting element).
@@ -1719,7 +1696,7 @@ sub attr {
   (scalar(@{$self->{'_cur'}} == 5)) or croak("Wrong event type");
   
   # Query
-  return map { $_ } %{$self->{'_cur'}->[3]};
+  return $self->{'_cur'}->[3];
 }
 
 =item B<externalAttr()>

@@ -1691,7 +1691,8 @@ window.LeafXML = (function() {
     }
     
     // If buffer is filled then grab the next event and set the result;
-    // else, clear the results and clear the current event
+    // else, clear the results, clear the current event, and verify that
+    // in finished state
     let result = false;
     if (this._buf.length > 0) {
       result = true;
@@ -1699,6 +1700,13 @@ window.LeafXML = (function() {
     } else {
       result = false;
       this._cur = null;
+      if (this._tstate >= 0) {
+        if (this._tstate === 0) {
+          throw this._parseErr(-1, "Unclosed tags at end of XML");
+        } else {
+          throw this._parseErr(-1, "Missing root element");
+        }
+      }
     }
     
     // Return result
