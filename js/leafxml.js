@@ -310,27 +310,6 @@ window.LeafXML = (function() {
    */
   
   /*
-   * Determine whether the given value is an integer.
-   * 
-   * Parameters:
-   * 
-   *   val - the value to check
-   * 
-   * Return:
-   * 
-   *   true if value is an integer, false otherwise
-   */
-  function isInteger(val) {
-    if (typeof val !== "number") {
-      return false;
-    }
-    if (Math.floor(val) !== val) {
-      return false;
-    }
-    return true;
-  }
-  
-  /*
    * Return a string with trailing XML whitespace dropped.
    * 
    * Parameters:
@@ -460,6 +439,27 @@ window.LeafXML = (function() {
    * Public functions
    * ================
    */
+  
+  /*
+   * Determine whether the given value is an integer.
+   * 
+   * Parameters:
+   * 
+   *   val - the value to check
+   * 
+   * Return:
+   * 
+   *   true if value is an integer, false otherwise
+   */
+  function isInteger(val) {
+    if (typeof val !== "number") {
+      return false;
+    }
+    if (Math.floor(val) !== val) {
+      return false;
+    }
+    return true;
+  }
   
   /*
    * Check whether a given integer value is a valid Unicode codepoint
@@ -1954,6 +1954,7 @@ window.LeafXML = (function() {
    */
   
   return {
+    "isInteger"   : isInteger,
     "validCode"   : validCode,
     "validString" : validString,
     "validName"   : validName,
