@@ -19,6 +19,7 @@ LeafXML::Util - Utility functions for LeafXML.
     validString
     validName
     readFullText
+    writeFullText
   );
   
   # Check whether a given value is a scalar integer
@@ -48,6 +49,14 @@ LeafXML::Util - Utility functions for LeafXML.
   # Read standard input into a Unicode string
   my $text;
   readFullText(\$text);
+  
+  # Write a whole text file from a Unicode string
+  my $text = "Example file\n";
+  writeFullText(\$text, "/path/to/file.txt");
+  
+  # Write a whole text file to standard output from a Unicode string
+  my $text = "Example file\n";
+  writeFullText(\$text);
 
 =head1 DESCRIPTION
 
@@ -291,6 +300,75 @@ sub readFullText {
   }
 }
 
+=item B<writeFullText(\$target, [path])>
+
+Read a whole text file from a decoded Unicode string.
+
+The first parameter is always a reference to a scalar storing the
+Unicode string to write.  Empty strings are acceptable, but will be
+automatically replaced with a string containing a single U+0020 Space
+character.
+
+Each character in the string must be a codepoint in range 0x0 to
+0x10FFFF, excluding the surrogate range 0xd800 to 0xdfff.  Additionally,
+if the string is not empty, the very first character may not be 0xfeff,
+which would be confused with a Byte Order Mark.
+
+If the second parameter is present, it is a scalar specifying a file
+path to the text file to write the text to.  If the second parameter is
+absent, the file is written to standard output.
+
+This function always encodes as UTF-8 without a Byte Order Mark, which
+is the preferred encoding in modern use.
+
+The referenced scalar will be reset to empty before the function
+returns, since the encoding function might modify it in place.
+
+=cut
+
+sub writeFullText {
+  # Get parameters
+  ($#_ >= 0) or croak("Bad call");
+  
+  my $source = shift;
+  (ref($source) eq 'SCALAR') or croak("Bad call");
+  
+  my $path = undef;
+  if ($#_ >= 0) {
+    $path = shift;
+    (defined $path) or croak("Bad call");
+    (not ref($path)) or croak("Bad call");
+  }
+  
+  ($#_ < 0) or croak("Bad call");
+  
+  # If source is empty, replace it with a single space
+  if (length($$source) < 1) {
+    $$source = " ";
+  }
+  
+  # Check that source has valid format
+  ($$source =~ /^
+    [\x{00}-\x{d7ff}\x{e000}-\x{fefe}\x{ff00}-\x{10ffff}]
+    [\x{00}-\x{d7ff}\x{e000}-\x{10ffff}]*
+  $/xs) or croak("Invalid source string");
+  
+  # In-place decoding with check
+  $$source = encode("UTF-8", $$source, Encode::FB_CROAK);
+  
+  # Write whole binary string to output
+  if (defined $path) {
+    open(my $fh, "> :raw", $path) or
+      die "Failed to create file: $path";
+    print { $fh } $$source;
+    close($fh) or warn "Failed to close file";
+    
+  } else {
+    binmode(STDOUT, ":raw") or die "Failed to set I/O mode";
+    print $$source;
+  }
+}
+
 =back
 
 =cut
@@ -305,6 +383,7 @@ our @EXPORT_OK = qw(
   validString
   validName
   readFullText
+  writeFullText
 );
 
 # End with something that evaluates to true

@@ -18,11 +18,32 @@ window.LeafXML = (function() {
    */
   
   /*
+   * Regular expressions that match any improperly paired surrogates
+   * within a string.  These are *not* Unicode regular expressions so
+   * that they can match individual UTF-16 codepoints.
+   */
+  const RX_INVALID_PAIRS_1 = new RegExp(
+    "(?:(?:[\\ud800-\\udbff][^\\udc00-\\udfff])|" +
+    "(?:[^\\ud800-\\udbff][\\udc00-\\udfff]))",
+    "s"
+  );
+  
+  const RX_INVALID_PAIRS_2 = new RegExp(
+    "^[\\udc00-\\udfff]",
+    "s"
+  );
+  
+  const RX_INVALID_PAIRS_3 = new RegExp(
+    "[\\ud800-\\udbfff]$",
+    "s"
+  );
+  
+  /*
    * Regular expression that matches any sequences of XML whitespace
    * characters within a string.
    */
   const RX_COMPRESS_WS = new RegExp(
-    "[ \t\n\r]+",
+    "[ \\t\\n\\r]+",
     "usg"
   );
   
@@ -31,7 +52,7 @@ window.LeafXML = (function() {
    * string, for use in whitespace trimming according to XML.
    */
   const RX_START_TRIM = new RegExp(
-    "^[ \t\n]+",
+    "^[ \\t\\n]+",
     "us"
   );
   
@@ -40,7 +61,7 @@ window.LeafXML = (function() {
    * for use in whitespace trimming according to XML.
    */
   const RX_END_TRIM = new RegExp(
-    "[ \t\n]+$",
+    "[ \\t\\n]+$",
     "us"
   );
   
@@ -49,7 +70,7 @@ window.LeafXML = (function() {
    * whitespace codepoints.  Empty strings also match.
    */
   const RX_BLANK = new RegExp(
-    "^[ \t\n]*$",
+    "^[ \\t\\n]*$",
     "us"
   );
   
@@ -655,6 +676,63 @@ window.LeafXML = (function() {
     
     // Return decoded string
     return tdec.decode(dbuf);
+  }
+  
+  /*
+   * Encode a Unicode string into a binary Uint8Array.
+   * 
+   * You can construct Blobs around Uint8Array objects by specifying an
+   * array containing the Uint8Array to the Blob constructor.
+   * 
+   * You can transmit Uint8Array objects with XMLHttpRequest using the
+   * send() function.
+   * 
+   * The provided string must contain validly paired surrogates and may
+   * not start with the codepoint 0xFEFF, which could be confused for a
+   * byte order mark.  If an empty string is passed, it will be 
+   * automatically replaced by a string with a single space character.
+   * 
+   * This function always encodes to UTF-8 without a byte order mark.
+   * 
+   * An exception is thrown in case of encoding error.
+   * 
+   * Parameters:
+   * 
+   *   str - the Unicode string to encode
+   * 
+   * Return:
+   * 
+   *   a Uint8Array containing the encoded string
+   */
+  function writeFullText(str) {
+    // Check parameters
+    if (typeof str !== "string") {
+      throw new Error();
+    }
+    
+    // If string is empty, add a single space
+    if (str.length < 1) {
+      str = " ";
+    }
+    
+    // Check for invalid surrogate pairs
+    RX_INVALID_PAIRS_1.lastIndex = 0;
+    RX_INVALID_PAIRS_2.lastIndex = 0;
+    RX_INVALID_PAIRS_3.lastIndex = 0;
+    
+    if (RX_INVALID_PAIRS_1.test(str) ||
+        RX_INVALID_PAIRS_2.test(str) ||
+        RX_INVALID_PAIRS_3.test(str)) {
+      throw new Error("Improperly paired surrogates");
+    }
+    
+    if (str.startsWith("\ufeff")) {
+      throw new Error("String starts with BOM codepoint");
+    }
+    
+    // Encode the string
+    const tenc = new TextEncoder();
+    return tenc.encode(str);
   }
   
   /*
@@ -2040,13 +2118,14 @@ window.LeafXML = (function() {
    */
   
   return {
-    "isInteger"   : isInteger,
-    "validCode"   : validCode,
-    "validString" : validString,
-    "validName"   : validName,
-    "readFullText": readFullText,
-    "ParserFault" : ParserFault,
-    "Parser"      : Parser
+    "isInteger"     : isInteger,
+    "validCode"     : validCode,
+    "validString"   : validString,
+    "validName"     : validName,
+    "readFullText"  : readFullText,
+    "writeFullText" : writeFullText,
+    "ParserFault"   : ParserFault,
+    "Parser"        : Parser
   };
   
 }());
