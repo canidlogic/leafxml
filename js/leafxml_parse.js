@@ -387,13 +387,21 @@ window.ParseApp = (function() {
     
     fr.addEventListener("load", (event) => {
       divResult.innerHTML = "Parsing...";
+      let full_text = "";
+      try {
+        full_text = LeafXML.readFullText(fr.result);
+      } catch (ex) {
+        divResult.innerHTML = "<b>Error:</b> Text decoding failed!";
+        setButtonEnable(true);
+        return;
+      }
       setTimeout(() => {
-        doParse(fr.result)
+        doParse(full_text);
       }, 100);
     });
     
     // Asynchronously read the file
-    fr.readAsText(fil);
+    fr.readAsArrayBuffer(fil);
   }
   
   /*

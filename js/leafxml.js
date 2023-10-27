@@ -572,6 +572,92 @@ window.LeafXML = (function() {
   }
   
   /*
+   * Read a whole binary ArrayBuffer into a Unicode string.
+   * 
+   * You can get ArrayBuffer objects from Blobs and Files by using a
+   * FileReader with the readAsArrayBuffer() method.
+   * 
+   * You can get ArrayBuffer objects from XMLHttpRequest by specifying
+   * "arraybuffer" as the responseType.
+   * 
+   * This function supports decoding UTF-8 with and without a byte order
+   * mark, and UTF-16 with a byte order mark.
+   * 
+   * An exception is thrown in case of decoding error.
+   * 
+   * Parameters:
+   * 
+   *   abuf - the ArrayBuffer to decode
+   * 
+   * Return:
+   * 
+   *   a decoded Unicode string
+   */
+  function readFullText(abuf) {
+    // Check parameters
+    if (!(abuf instanceof ArrayBuffer)) {
+      throw new Error();
+    }
+    
+    // If empty buffer, return empty string
+    if (abuf.byteLength < 1) {
+      return "";
+    }
+    
+    // Get an unsigned byte view of the buffer
+    const ubuf = new Uint8Array(abuf);
+    
+    // Determine the number of BOM bytes and the specific encoding by
+    // looking at the start of the buffer
+    let bom_bytes = 0;
+    let enc_name  = "utf-8";
+    
+    if (ubuf.length >= 3) {
+      if ((ubuf[0] === 0xef) &&
+          (ubuf[1] === 0xbb) &&
+          (ubuf[2] === 0xbf)) {
+        bom_bytes = 3;
+        enc_name = "utf-8";
+      }
+    }
+    
+    if ((bom_bytes === 0) && (ubuf.length >= 2)) {
+      if ((ubuf[0] === 0xfe) && (ubuf[1] === 0xff)) {
+        bom_bytes = 2;
+        enc_name = "utf-16be";
+        
+      } else if ((ubuf[0] === 0xff) && (ubuf[1] === 0xfe)) {
+        bom_bytes = 2;
+        enc_name = "utf-16le";
+      }
+    }
+    
+    // If only thing that is present is a BOM, then return empty string
+    if (bom_bytes >= ubuf.length) {
+      return "";
+    }
+    
+    // Set the data array to the same as the byte array if there is no
+    // BOM, and otherwise a subset excluding the BOM
+    let dbuf = ubuf;
+    if (bom_bytes > 0) {
+      dbuf = ubuf.subarray(bom_bytes);
+    }
+    
+    // Construct a text decoder with the appropriate encoding type and
+    // set it to throw exceptions in case of bad encodings and also to
+    // not process any BOM because we've already done BOM processing
+    // ourselves
+    const tdec = new TextDecoder(enc_name, {
+      "fatal": true,
+      "ignoreBOM": true
+    });
+    
+    // Return decoded string
+    return tdec.decode(dbuf);
+  }
+  
+  /*
    * ParserFault class
    * =================
    * 
@@ -1958,6 +2044,7 @@ window.LeafXML = (function() {
     "validCode"   : validCode,
     "validString" : validString,
     "validName"   : validName,
+    "readFullText": readFullText,
     "ParserFault" : ParserFault,
     "Parser"      : Parser
   };
