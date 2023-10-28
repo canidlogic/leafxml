@@ -1,0 +1,58 @@
+body {
+  max-width: 35em;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 0.5em;
+  padding-right: 1.5em;
+  margin-top: 2.5em;
+  margin-bottom: 5em;
+  color: black;
+  background-color: whitesmoke;
+  font-family: sans-serif;
+}
+
+h1 {
+  font-size: 150%;
+  font-weight: bold;
+  margin-bottom: 0.5em;
+}
+
+h2 {
+  font-size: 125%;
+  font-weight: bold;
+  margin-top: 3em;
+  margin-bottom: 0.5em;
+}
+
+button {
+  font-size: 125%;
+  padding: 0.5em;
+}
+
+textarea {
+  width: 100%;
+  height: 30em;
+  overflow: auto;
+  resize: vertical;
+  border: medium inset;
+  margin-left: 0;
+  margin-right: 0;
+  margin-top: 1.5em;
+  padding: 0.25em;
+  font-family: monospace;
+  background-color: white;
+}
+
+select {
+  font-size: 125%;
+}
+
+.clsButtonRow {
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+
+.clsLabel {
+  margin-top: 2.5em;
+  margin-bottom: 0em;
+}

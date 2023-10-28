@@ -13,9 +13,80 @@
 window.LeafXML = (function() {
   
   /*
+   * Constants
+   * =========
+   */
+  
+  /*
+   * Define an array of 64 one-character strings, each containing the
+   * appropriate character for that particular Base64 digit.
+   */
+  let BASE64_DIGITS = [];
+  for(let i = 0; i < 64; i++) {
+    let cv;
+    if (i < 26) {
+      cv = ("A").charCodeAt(0) + i;
+    } else if (i < 52) {
+      cv = ("a").charCodeAt(0) + (i - 26);
+    } else if (i < 62) {
+      cv = ("0").charCodeAt(0) + (i - 52);
+    } else if (i === 62) {
+      cv = ("+").charCodeAt(0);
+    } else if (i === 63) {
+      cv = ("/").charCodeAt(0);
+    } else {
+      throw new Error();
+    }
+    BASE64_DIGITS.push(String.fromCharCode(cv));
+  }
+  
+  /*
+   * Define an array of 94 integers, representing the codepoints 0x21 to
+   * 0x7e.  Each value is either -1, indicating the codepoint is not a
+   * valid Base64 digit, or the numeric value of the Base64 digit in
+   * range 0 to 63.
+   */
+  let BASE64_LOOKUP = [];
+  for(let i = 0; i < 94; i++) {
+    BASE64_LOOKUP.push(-1);
+  }
+  for(let i = 0; i < 64; i++) {
+    BASE64_LOOKUP[BASE64_DIGITS[i].charCodeAt(0) - 0x21] = i;
+  }
+  
+  /*
    * Regular expressions
    * ===================
    */
+  
+  /*
+   * Regular expression that matches a string, possibly empty, that only
+   * contains Unicode codepoints excluding surrogates.
+   */
+  const RX_VALID_UNICODE = new RegExp(
+    "^[\\u{00}-\\u{d7ff}\\u{e000}-\\u{10ffff}]*$",
+    "us"
+  );
+  
+  /*
+   * Regular expression for parsing through digit groups, padding, and
+   * invalid codepoints in a Base64 string that has already been
+   * stripped of any whitespace.
+   */
+  const RX_BASE64_TOKENS = new RegExp(
+    "(?:" +
+      "(?:" +
+        "[A-Za-z0-9\\+\\/]{2,4}" +
+      ")|" +
+      "(?:" +
+        "={1,2}" +
+      ")|" +
+      "(?:" +
+        "[^=]" +
+      ")" +
+    ")",
+    "usg"
+  );
   
   /*
    * Regular expressions that match any improperly paired surrogates
@@ -42,7 +113,7 @@ window.LeafXML = (function() {
    * Regular expression that matches any sequences of XML whitespace
    * characters within a string.
    */
-  const RX_COMPRESS_WS = new RegExp(
+  const RX_MATCH_WS = new RegExp(
     "[ \\t\\n\\r]+",
     "usg"
   );
@@ -366,11 +437,11 @@ window.LeafXML = (function() {
       throw new Error();
     }
     
-    RX_COMPRESS_WS.lastIndex = 0;
+    RX_MATCH_WS.lastIndex = 0;
     RX_START_TRIM.lastIndex  = 0;
     RX_END_TRIM.lastIndex    = 0;
     
-    str = str.replaceAll(RX_COMPRESS_WS, " ");
+    str = str.replaceAll(RX_MATCH_WS, " ");
     str = str.replace(RX_START_TRIM, "");
     str = str.replace(RX_END_TRIM, "");
     
@@ -733,6 +804,386 @@ window.LeafXML = (function() {
     // Encode the string
     const tenc = new TextEncoder();
     return tenc.encode(str);
+  }
+  
+  /*
+   * Apply entity escaping to input text.
+   * 
+   * The first parameter is always the unescaped source string.
+   * 
+   * The second parameter is an integer in range 0 to 2.  The value zero
+   * means escaping should be performed for content text between element
+   * tags.  The value one means escaping should be performed for a
+   * single-quoted attribute value.  The value two means escaping should
+   * be performed for a double-quoted attribute value.
+   * 
+   * The entity escapes are as follow:
+   * 
+   *   &amp;  for literal &
+   *   &lt;   for literal <
+   *   &gt;   for literal >
+   *   &quot; for literal "
+   *   &apos; for literal '
+   * 
+   * The ampersand and angle escapes are used in all escaping styles.
+   * The double quote escape is only used if the second parameter is set
+   * to 2.  The single quote escape is only used if the second parameter
+   * is set to 1.
+   * 
+   * This function does not verify that all codepoints are valid.  It
+   * merely performs the appropriate substitutions.  The return value is
+   * the escaped string.
+   * 
+   * Parameters:
+   * 
+   *   str - the unescaped input string
+   * 
+   *   style - an integer selecting the escaping style
+   * 
+   * Return:
+   * 
+   *   the escaped string
+   */
+  function escapeText(str, style) {
+    // Check parameters
+    if (typeof str !== "string") {
+      throw new Error();
+    }
+    if (!isInteger(style)) {
+      throw new Error();
+    }
+    if ((style < 0) || (style > 2)) {
+      throw new Error();
+    }
+    
+    // Perform ampersand replacement first
+    str = str.replaceAll("&", "&amp;");
+    
+    // Perform special replacements
+    if (style === 2) {
+      str = str.replaceAll("\"", "&quot;");
+    
+    } else if (style === 1) {
+      str = str.replaceAll("'", "&apos;");
+    }
+    
+    // Perform regular non-ampersand replacements
+    str = str.replaceAll("<", "&lt;");
+    str = str.replaceAll(">", "&gt;");
+    
+    // Return escaped string
+    return str;
+  }
+  
+  /*
+   * Encode a Unicode string into UTF-8 encoded in Base64.
+   * 
+   * Each character in the string must be a codepoint in range 0x0 to
+   * 0x10FFFF, excluding the surrogate range 0xd800 to 0xdfff.
+   * 
+   * An empty string is acceptable, and will result in an empty string
+   * being returned.
+   * 
+   * The Base64 style used here has + and / as the last two digits and
+   * uses = for end padding to make sure the total number of Base64
+   * digits mod 4 is zero.
+   * 
+   * No whitespace or line breaking will be added to the Base64 result
+   * string.
+   * 
+   * Parameters:
+   * 
+   *   str - the string to encode
+   * 
+   * Return:
+   * 
+   *   the base64 encoding of the string in UTF-8
+   */
+  function toText64(str) {
+    // Check parameters
+    if (typeof str !== "string") {
+      throw new Error();
+    }
+    
+    // Empty string has empty result
+    if (str.length < 1) {
+      return "";
+    }
+    
+    // Check that codepoints are valid
+    RX_VALID_UNICODE.lastIndex = 0;
+    if (!RX_VALID_UNICODE.test(str)) {
+      throw new Error("String has invalid codepoints");
+    }
+    
+    // Encode string to binary UTF-8
+    const tenc = new TextEncoder();
+    const ubuf = tenc.encode(str);
+    
+    // Result starts out empty
+    let result = "";
+    
+    // Encode groups of up to three bytes into four Base64 characters
+    for(let i = 0; i < ubuf.length; i += 3) {
+      // Get current group
+      let a = ubuf[i];
+      let b = null;
+      let c = null;
+      
+      if (i <= ubuf.length - 3) {
+        b = ubuf[i + 1];
+        c = ubuf[i + 2];
+      
+      } else if (i <= ubuf.length - 2) {
+        b = ubuf[i + 1];
+      }
+      
+      // Combine into a single integer value, with unused bytes filled
+      // with zero
+      let ival = a << 16;
+      if (b !== null) {
+        ival = ival | (b << 8);
+      }
+      if (c !== null) {
+        ival = ival | c;
+      }
+      
+      // Always encode at least two Base64 digits of the group to cover
+      // at least the first byte
+      result = result + BASE64_DIGITS[ival >> 18];
+      result = result + BASE64_DIGITS[(ival >> 12) & 0x3f];
+      
+      // Encode third Base64 digit if at least two bytes, else pad
+      if (b !== null) {
+        result = result + BASE64_DIGITS[(ival >> 6) & 0x3f];
+      } else {
+        result = result + "=";
+      }
+      
+      // Encode fourth Base64 digit if all three bytes, else pad
+      if (c !== null) {
+        result = result + BASE64_DIGITS[ival & 0x3f];
+      } else {
+        result = result + "=";
+      }
+    }
+    
+    // Return result
+    return result;
+  }
+  
+  /*
+   * Decode a Unicode string from UTF-8 encoded in Base64.
+   * 
+   * Spaces, tabs, carriage returns, and line feeds will automatically
+   * be filtered out of the given string.
+   * 
+   * After whitespace filtering, the string must only contain Base64
+   * digits, where + and / are the last two digits.  The total number of
+   * Base64 digits must be a multiple of four, with = used as padding if
+   * necessary at the end.  An empty string after whitespace filtering
+   * is acceptable, which will produce an empty result.
+   * 
+   * The result string is verified to only contain codepoints in range
+   * 0x0 to 0x10FFFF, excluding the surrogate range 0xd800 to 0xdfff.
+   * 
+   * Parameters:
+   * 
+   *   str - the base64 string to decode
+   * 
+   * Return:
+   * 
+   *   the decoded string
+   */
+  function fromText64(str) {
+    // Check parameters
+    if (typeof str !== "string") {
+      throw new Error();
+    }
+    
+    // Drop whitespace
+    RX_MATCH_WS.lastIndex = 0;
+    str = str.replaceAll(RX_MATCH_WS, "");
+    
+    // Empty filtered string has empty result
+    if (str.length < 1) {
+      return "";
+    }
+    
+    // The state is -1 if no digit groups processed yet, 0 if only full
+    // digit groups have been processed, 1 or 2 if a partial group has
+    // been processed and this number of padding characters are
+    // expected, or 3 if padding characters have been processed
+    let state = -1;
+    
+    // Result size starts as 3/4 length of filtered base64 string
+    let rsize = Math.floor(str.length / 4) * 3;
+    if (rsize < 3) {
+      rsize = 3;
+    }
+    
+    // Adjust result size based on padding
+    if (str.endsWith("==")) {
+      rsize -= 2;
+    } else if (str.endsWith("=")) {
+      rsize--;
+    }
+    
+    // Allocate the array for the decoded bytes, and start index at zero
+    const buf = new Uint8Array(rsize);
+    let buf_i = 0;
+    
+    // Parse groups of base64 digits
+    RX_BASE64_TOKENS.lastIndex = 0;
+    for(let retval = RX_BASE64_TOKENS.exec(str);
+        retval !== null;
+        retval = RX_BASE64_TOKENS.exec(str)) {
+      
+      // Get current token
+      let token = retval[0];
+      
+      // If token is single codepoint that isn't =, then there was
+      // something invalid
+      if ((token.length <= 1) && (token !== "=")) {
+        throw new Error("Invalid Base64 string");
+      }
+      
+      // We shouldn't be here in state 3 because nothing should come
+      // after padding
+      if (state === 3) {
+        throw new Error("Invalid Base64 string");
+      }
+      
+      // If we are in states 1 or 2, we should have the proper padding
+      // token, and then update state and go to next token
+      if (state === 1) {
+        if (token !== "=") {
+          throw new Error("Invalid Base64 string");
+        }
+        state = 3;
+        continue;
+        
+      } else if (state === 2) {
+        if (token !== "==") {
+          throw new Error("Invalid Base64 string");
+        }
+        state = 3;
+        continue;
+      }
+      
+      // If we got here, we should have Base64 group, not padding
+      if (token.startsWith("=")) {
+        throw new Error("Invalid Base64 string");
+      }
+      
+      // Update state based on length of Base64 group
+      if (token.length === 4) {
+        // Full group
+        state = 0;
+        
+      } else if (token.length === 3) {
+        // Partial group, need one padding char
+        state = 1;
+        
+      } else if (token.length === 2) {
+        // Partial group, need two padding chars
+        state = 2;
+        
+      } else {
+        throw new Error();
+      }
+      
+      // Get individual digits of token
+      let a = token.charCodeAt(0);
+      let b = token.charCodeAt(1);
+      let c = null;
+      let d = null;
+      
+      if (token.length >= 4) {
+        c = token.charCodeAt(2);
+        d = token.charCodeAt(3);
+      
+      } else if (token.length >= 3) {
+        c = token.charCodeAt(2);
+      }
+      
+      // Always process the first two digits
+      let ival;
+      let z;
+      
+      z = BASE64_LOOKUP[a - 0x21];
+      if (z < 0) {
+        throw new Error();
+      }
+      ival = z;
+      
+      z = BASE64_LOOKUP[b - 0x21];
+      if (z < 0) {
+        throw new Error();
+      }
+      ival = (ival << 6) | z;
+      
+      // Process last two digits if present, else just shift zeroes
+      if (c !== null) {
+        z = BASE64_LOOKUP[c - 0x21];
+        if (z < 0) {
+          throw new Error();
+        }
+        ival = (ival << 6) | z;
+        
+      } else {
+        ival <<= 6;
+      }
+      
+      if (d !== null) {
+        z = BASE64_LOOKUP[d - 0x21];
+        if (z < 0) {
+          throw new Error();
+        }
+        ival = (ival << 6) | z;
+      
+      } else {
+        ival <<= 6;
+      }
+      
+      // Always add at least first byte
+      buf[buf_i] = (ival >> 16);
+      buf_i++;
+      
+      // Add second byte if at least three Base64 digits
+      if (c !== null) {
+        buf[buf_i] = (ival >> 8) & 0xff;
+        buf_i++;
+      }
+      
+      // Add third byte if all four Base64 digits
+      if (d !== null) {
+        buf[buf_i] = ival & 0xff;
+        buf_i++;
+      }
+    }
+    
+    // The only valid finish states are 0 (only full digit groups) or 3
+    // (padding characters processed)
+    if ((state !== 0) && (state !== 3)) {
+      throw new Error("Invalid Base64 string");
+    }
+    
+    // We now have a binary string, so decode it with UTF-8
+    const tdec = new TextDecoder("utf-8", {
+      "fatal": true,
+      "ignoreBOM": true
+    });
+    
+    let result;
+    try {
+      result = tdec.decode(buf);
+    } catch (ex) {
+      throw new Error("Invalid UTF-8 encoding within Base64");
+    }
+    
+    // Return decoded string
+    return result;
   }
   
   /*
@@ -2124,6 +2575,9 @@ window.LeafXML = (function() {
     "validName"     : validName,
     "readFullText"  : readFullText,
     "writeFullText" : writeFullText,
+    "toText64"      : toText64,
+    "fromText64"    : fromText64,
+    "escapeText"    : escapeText,
     "ParserFault"   : ParserFault,
     "Parser"        : Parser
   };

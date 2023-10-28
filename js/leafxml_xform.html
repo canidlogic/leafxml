@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"/>
+    <title>LeafXML text transform</title>
+    <meta name="viewport"  
+      content="width=device-width, initial-scale=1.0"/>
+    <link href="leafxml_xform.css" rel="stylesheet"/>
+    <script src="leafxml.js"></script>
+    <script src="leafxml_xform.js"></script>
+  </head>
+  <body>
+    <h1>LeafXML text transform</h1>
+    <div class="clsLabel">Input text:</div>
+    <textarea
+      id="txtInput"
+      autocorrect="off"
+      autofocus
+      spellcheck="false"></textarea>
+    <div class="clsButtonRow">
+      <button id="btnTransform" type="button">Transform</button>
+      <select id="selTransform">
+        <option value="esc0" selected>Escape (Content text)</option>
+        <option value="esc1">Escape (' ' attribute)</option>
+        <option value="esc2">Escape (" " attribute)</option>
+        <option value="e64">Encode Base64</option>
+        <option value="d64">Decode Base64</option>
+      </select>
+    </div>
+    <h2>Result</h2>
+    <textarea
+      id="txtOutput"
+      readonly></textarea>
+  </body>
+</html>
