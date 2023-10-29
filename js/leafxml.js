@@ -528,6 +528,32 @@ window.LeafXML = (function() {
   }
   
   /*
+   * Perform line break normalization on the given string and return the
+   * normalized version.
+   * 
+   * Parameters:
+   * 
+   *   str - the string to normalize
+   * 
+   * Return:
+   * 
+   *   the line break normalized string
+   */
+  function breakNorm(str) {
+    if (typeof str !== "string") {
+      throw new Error();
+    }
+    
+    RX_BREAK_NORM_1.lastIndex = 0;
+    RX_BREAK_NORM_2.lastIndex = 0;
+    
+    str = str.replaceAll(RX_BREAK_NORM_1, "\n");
+    str = str.replaceAll(RX_BREAK_NORM_2, "\n");
+    
+    return str;
+  }
+  
+  /*
    * Public functions
    * ================
    */
@@ -635,32 +661,6 @@ window.LeafXML = (function() {
     } else {
       return false;
     }
-  }
-  
-  /*
-   * Perform line break normalization on the given string and return the
-   * normalized version.
-   * 
-   * Parameters:
-   * 
-   *   str - the string to normalize
-   * 
-   * Return:
-   * 
-   *   the line break normalized string
-   */
-  function breakNorm(str) {
-    if (typeof str !== "string") {
-      throw new Error();
-    }
-    
-    RX_BREAK_NORM_1.lastIndex = 0;
-    RX_BREAK_NORM_2.lastIndex = 0;
-    
-    str = str.replaceAll(RX_BREAK_NORM_1, "\n");
-    str = str.replaceAll(RX_BREAK_NORM_2, "\n");
-    
-    return str;
   }
   
   /*
