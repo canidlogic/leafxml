@@ -757,6 +757,10 @@ sub fromText64 {
     die "Invalid UTF-8 encoding within Base64";
   }
   
+  # Check that codepoints are valid
+  ($result =~ /^[\x{00}-\x{d7ff}\x{e000}-\x{10ffff}]*$/s) or
+    croak("String has invalid codepoints");
+  
   # Return decoded string
   return $result;
 }

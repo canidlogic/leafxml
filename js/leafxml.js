@@ -1182,6 +1182,12 @@ window.LeafXML = (function() {
       throw new Error("Invalid UTF-8 encoding within Base64");
     }
     
+    // Check that codepoints are valid
+    RX_VALID_UNICODE.lastIndex = 0;
+    if (!RX_VALID_UNICODE.test(result)) {
+      throw new Error("String has invalid codepoints");
+    }
+    
     // Return decoded string
     return result;
   }
