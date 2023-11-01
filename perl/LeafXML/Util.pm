@@ -420,6 +420,9 @@ sub writeFullText {
     binmode(STDOUT, ":raw") or die "Failed to set I/O mode";
     print $$source;
   }
+  
+  # Clear source string
+  $$source = "";
 }
 
 =item B<escapeText(input, [attr])>
