@@ -176,4 +176,4 @@ For attributes with the reserved `xml:` namespace prefix (such as `xml:space` an
 
     http://www.w3.org/XML/1998/namespace
 
-Attribute names have already been normalized to Unicode NFC form.  Attribute values have already have their entity escapes decoded, their internal whitespace sequences collapsed to single spaces, their leading and trailing whitespace trimmed, and been normalized to Unicode NFC form.  Empty attribute values are llowed.
+Attribute names have already been normalized to Unicode NFC form.  Attribute values have already have their entity escapes decoded, their internal whitespace sequences collapsed to single spaces, their leading and trailing whitespace trimmed, and been normalized to Unicode NFC form.  Empty attribute values are allowed.
