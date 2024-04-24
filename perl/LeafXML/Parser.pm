@@ -1316,15 +1316,15 @@ sub readEvent {
     for(my ($token_line, $token) = $self->_readToken();
         defined $token;
         ($token_line, $token) = $self->_readToken()) {
-      
-      # Skip instruction, DOCTYPE, and comment tokens
-      if ($token =~ /^\x{3c}[!\?]/) {
-        next;
-      }
-      
+
       # If this is a CDATA token, then add it to the content buffer
-      if ($token =~
-            /^\x{3c}!\x{5b}CDATA\x{5b}(.*)\x{5d}\x{5d}\x{3e}$/) {
+      if ($token =~ /^
+      
+            \x{3c}!\x{5b}CDATA\x{5b}
+            ((?:[^\x{5d}]|\x{5d}[^\x{5d}]|\x{5d}\x{5d}+[^\x{3e}])*)
+            \x{5d}+\x{5d}\x{3e}
+          
+          $/x) {
         $token = $1;
         if (defined $content) {
           $content = $content . $token;
@@ -1332,6 +1332,11 @@ sub readEvent {
           $content = $token;
           $content_line = $token_line;
         }
+        next;
+      }
+      
+      # Skip instruction, DOCTYPE, and comment tokens
+      if ($token =~ /^\x{3c}[!\?]/) {
         next;
       }
       

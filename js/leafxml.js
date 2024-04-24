@@ -342,7 +342,9 @@ window.LeafXML = (function() {
    * inside the block as the first capture group.
    */
   const RX_CDATA = new RegExp(
-    "^\\u{3c}!\\u{5b}CDATA\\u{5b}(.*)\\u{5d}\\u{5d}\\u{3e}$",
+    "^\\u{3c}!\\u{5b}CDATA\\u{5b}" +
+    "((?:[^\\u{5d}]|\\u{5d}[^\\u{5d}]|\\u{5d}\\u{5d}+[^\\u{3e}])*)" +
+    "\\u{5d}\\u{5d}\\u{3e}$",
     "us"
   );
   
@@ -2278,11 +2280,6 @@ window.LeafXML = (function() {
         let token_line = retval[0];
         let token      = retval[1];
         
-        // Skip instruction, DOCTYPE, and comment tokens
-        if (token.startsWith("<!") || token.startsWith("<?")) {
-          continue;
-        }
-        
         // If this is a CDATA token, then add it to the content buffer
         let retval2 = null;
         RX_CDATA.lastIndex = 0;
@@ -2295,6 +2292,11 @@ window.LeafXML = (function() {
             content = token;
             content_line = token_line;
           }
+          continue;
+        }
+        
+        // Skip instruction, DOCTYPE, and comment tokens
+        if (token.startsWith("<!") || token.startsWith("<?")) {
           continue;
         }
         

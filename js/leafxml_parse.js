@@ -116,9 +116,9 @@ window.ParseApp = (function() {
     if (typeof str !== "string") {
       throw new Error();
     }
+    str = str.replaceAll("&", "&amp;");
     str = str.replaceAll("<", "&lt;");
     str = str.replaceAll(">", "&gt;");
-    str = str.replaceAll("&", "&amp;");
     return str;
   }
   
